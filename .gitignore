@@ -1,0 +1,25 @@
+# Environment variables / secrets
+.env
+
+# Python cache
+__pycache__/
+*.py[cod]
+
+# Databases
+*.db
+*.sqlite
+*.sqlite3
+
+# Uploaded files
+uploads/
+
+# Debug / local testing files
+debug_*.py
+test_*.py
+
+# Virtual environment
+venv/
+.venv/
+
+# OS files
+.DS_Store

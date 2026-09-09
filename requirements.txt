@@ -1,0 +1,42 @@
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+sqlalchemy==2.0.35
+pydantic==2.9.2
+pydantic-settings==2.5.2
+python-multipart==0.0.9
+python-dotenv==1.0.1
+Pillow==10.4.0
+pdf2image==1.17.0
+opencv-python-headless==4.10.0.84
+numpy==1.26.4
+
+# --- OCR engine: Gemini (DEFAULT) ---
+# The default engine (OCR_ENGINE=gemini) uses the google-genai SDK below —
+# no extra dependencies, no model download. Nothing to install here.
+
+# --- OCR engine: TrOCR (OPTIONAL — only if you set OCR_ENGINE=trocr) ---
+# Self-hosted handwriting model (Microsoft TrOCR via HuggingFace). Heavy
+# (~2GB of torch weights), so it is commented out to keep the default
+# install light. Uncomment these four lines if you want the trocr engine:
+#
+#   torch/torchvision are left unpinned on purpose — PyTorch dropped Intel
+#   Mac (x86_64) wheels after 2.2.2, so pinning a newer version breaks
+#   installs there; letting pip resolve picks the right build per platform.
+#   transformers is PINNED to 4.44.2: newer releases require torch>=2.4,
+#   which fails on Intel Mac's 2.2.2 cap. sentencepiece is needed by TrOCR's
+#   tokenizer.
+# torch>=2.2.0
+# torchvision>=0.17.0
+# transformers==4.44.2
+# sentencepiece==0.2.0
+
+# Fallback OCR for typed/clean text (fast, no GPU needed)
+pytesseract==0.3.13
+
+# --- AI grading backend ---
+google-genai>=0.5.0
+supabase>=2.7.0
+
+# --- Background jobs ---
+celery==5.4.0
+redis==5.1.0
