@@ -154,10 +154,18 @@ def create_parent_profile(
     """
     Creates a local parent profile for the authenticated
     Supabase user.
+
+    Authentication credentials are handled by Supabase Auth.
+    This endpoint only stores the parent's profile information
+    in the local directory database.
     """
 
     user_id = current_user["sub"]
     email = current_user.get("email")
+
+    # ---------------------------------------------------------
+    # Check if parent profile already exists
+    # ---------------------------------------------------------
 
     existing_parent = (
         db.query(Parent)
@@ -173,15 +181,28 @@ def create_parent_profile(
             detail="Parent profile already exists",
         )
 
+    # ---------------------------------------------------------
+    # Create parent profile
+    # ---------------------------------------------------------
+
     parent = Parent(
         id=user_id,
         email=email or "",
         name=payload.name,
+        address=payload.address,
+        qualification=payload.qualification,
+        profession=payload.profession,
+        spouse_name=payload.spouse_name,
+        spouse_details=payload.spouse_details,
     )
 
     db.add(parent)
     db.commit()
     db.refresh(parent)
+
+    # ---------------------------------------------------------
+    # Return created parent profile
+    # ---------------------------------------------------------
 
     return {
         "message": "Parent profile created successfully",
@@ -189,9 +210,13 @@ def create_parent_profile(
             "id": parent.id,
             "email": parent.email,
             "name": parent.name,
+            "address": parent.address,
+            "qualification": parent.qualification,
+            "profession": parent.profession,
+            "spouse_name": parent.spouse_name,
+            "spouse_details": parent.spouse_details,
         },
     }
-
 
 # =============================================================
 # CREATE STUDENT

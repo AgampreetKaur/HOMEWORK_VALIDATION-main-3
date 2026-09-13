@@ -10,8 +10,21 @@ class Parent(DirectoryBase):
     __tablename__ = "parents"
 
     id = Column(String, primary_key=True)
+
     email = Column(String, nullable=False, unique=True)
+
     name = Column(String, nullable=True)
+
+    address = Column(String, nullable=True)
+
+    qualification = Column(String, nullable=True)
+
+    profession = Column(String, nullable=True)
+
+    spouse_name = Column(String, nullable=True)
+
+    spouse_details = Column(String, nullable=True)
+
     created_at = Column(DateTime, default=datetime.utcnow)
 
     children = relationship(
@@ -41,9 +54,13 @@ class StudentProfile(DirectoryBase):
     )
 
     name = Column(String, nullable=False)
+
     grade = Column(String, nullable=True)
+
     school = Column(String, nullable=True)
+
     class_teacher = Column(String, nullable=True)
+
     db_path = Column(String, nullable=False)
 
     created_at = Column(DateTime, default=datetime.utcnow)

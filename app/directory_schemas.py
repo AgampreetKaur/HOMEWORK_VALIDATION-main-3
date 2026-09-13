@@ -5,6 +5,11 @@ from pydantic import BaseModel
 
 class ParentProfileCreate(BaseModel):
     name: Optional[str] = None
+    address: Optional[str] = None
+    qualification: Optional[str] = None
+    profession: Optional[str] = None
+    spouse_name: Optional[str] = None
+    spouse_details: Optional[str] = None
 
 
 class StudentCreate(BaseModel):
