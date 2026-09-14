@@ -10,7 +10,9 @@ from app import directory_models
 # startup (scheduled tests + report cards).
 from app import feature_models  # noqa: F401
 from app import usage_models  # noqa: F401
-from app.routers import submissions, directory, reports, student_auth, tests, report_cards, usage, generation
+from app import notification_models  # noqa: F401
+from app import admin_models          # noqa: F401
+from app.routers import submissions, directory, reports, student_auth, tests, report_cards, usage, generation, notifications, admin, chapters
 
 
 logging.basicConfig(level=logging.INFO)
@@ -51,6 +53,9 @@ app.include_router(tests.router)
 app.include_router(report_cards.router)
 app.include_router(usage.router)
 app.include_router(generation.router)
+app.include_router(notifications.router)
+app.include_router(admin.router)
+app.include_router(chapters.router)
 
 
 # ---------------------------------------------------------
@@ -74,6 +79,13 @@ def on_startup():
             "ALTER TABLE report_cards ADD COLUMN overview_generated_at DATETIME",
             "ALTER TABLE token_usage_logs ADD COLUMN thoughts_tokens INTEGER DEFAULT 0",
             "ALTER TABLE token_usage_logs ADD COLUMN cost_usd FLOAT",
+            "ALTER TABLE scheduled_tests ADD COLUMN test_mode VARCHAR DEFAULT 'mcq'",
+            "ALTER TABLE scheduled_tests ADD COLUMN paper_text TEXT",
+            "ALTER TABLE scheduled_tests ADD COLUMN answer_key_text TEXT",
+            "ALTER TABLE scheduled_tests ADD COLUMN start_notified BOOLEAN DEFAULT 0",
+            "ALTER TABLE scheduled_tests ADD COLUMN submit_reminder_notified BOOLEAN DEFAULT 0",
+            # Chapters table additions (is_active may be missing on old DBs)
+            "ALTER TABLE chapters ADD COLUMN is_active BOOLEAN DEFAULT 1",
         ):
             try:
                 conn.execute(text(ddl))

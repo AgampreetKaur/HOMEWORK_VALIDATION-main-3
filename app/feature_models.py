@@ -24,7 +24,7 @@ StudentProfile.id from the directory database (NOT the login id), and
 
 from datetime import datetime
 
-from sqlalchemy import Column, String, Integer, Text, DateTime
+from sqlalchemy import Column, String, Integer, Text, DateTime, Boolean
 
 from app.database import Base
 from app.models import gen_uuid
@@ -49,13 +49,29 @@ class ScheduledTest(Base):
     subject = Column(String, nullable=True)
     chapter = Column(String, nullable=True)
 
+    # "mcq" (default, taken live in-app) or "printed" (a downloadable/
+    # printable paper the child answers on paper, then uploads via
+    # Homework Validation to be graded like any other submission).
+    test_mode = Column(String, nullable=False, default="mcq")
+
     # JSON list of questions:
     # [{"question": str, "options": [str, str, str, str],
     #   "answer_index": int, "explanation": str}]
     #
     # The correct answer/explanation is ONLY ever sent to the child after they
     # submit — the "take" endpoint strips it out.
-    questions_json = Column(Text, nullable=False)
+    #
+    # NULL for a "printed" test — see paper_text/answer_key_text below instead.
+    # (Populated with "[]" rather than left NULL for printed tests, so this
+    # stays compatible with an already-deployed table where this column is
+    # NOT NULL — see routers/tests.py's create_test().)
+    questions_json = Column(Text, nullable=False, default="[]")
+
+    # Only set when test_mode == "printed": the plain-text question paper and
+    # answer key exactly as generated (same QUESTION_PAPER_START/ANSWER_KEY_
+    # START format the Test Paper Generator produces).
+    paper_text = Column(Text, nullable=True)
+    answer_key_text = Column(Text, nullable=True)
 
     total_questions = Column(Integer, nullable=False, default=0)
 
@@ -65,7 +81,9 @@ class ScheduledTest(Base):
     # "notify me at this time" comparison stays exact.
     scheduled_at = Column(String, nullable=False)
 
-    # Optional in-app time limit once the child starts.
+    # For "mcq": optional in-app time limit once the child starts.
+    # For "printed": how long the child has, from scheduled_at, before a
+    # "please upload your answers" reminder notification is sent.
     duration_minutes = Column(Integer, nullable=True)
 
     # "scheduled" -> "completed"
@@ -75,6 +93,10 @@ class ScheduledTest(Base):
     score = Column(Integer, nullable=True)
     max_score = Column(Integer, nullable=True)
     answers_json = Column(Text, nullable=True)   # list[int] of chosen options
+
+    # Guards against sending the same notification twice on every poll.
+    start_notified = Column(Boolean, nullable=False, default=False)
+    submit_reminder_notified = Column(Boolean, nullable=False, default=False)
 
     created_at = Column(DateTime, default=datetime.utcnow)
     completed_at = Column(DateTime, nullable=True)

@@ -35,7 +35,17 @@ class ScheduledTestCreate(BaseModel):
     # ISO-8601 UTC string ending in "Z" (frontend converts local -> UTC).
     scheduled_at: str
     duration_minutes: Optional[int] = None
-    questions: List[TestQuestionIn] = Field(..., min_length=1)
+
+    # "mcq" (default) or "printed".
+    test_mode: Optional[str] = "mcq"
+
+    # Required when test_mode == "mcq".
+    questions: Optional[List[TestQuestionIn]] = None
+
+    # Required when test_mode == "printed" — the plain-text paper as
+    # generated (QUESTION_PAPER_START/ANSWER_KEY_START format).
+    paper_text: Optional[str] = None
+    answer_key_text: Optional[str] = None
 
 
 class ScheduledTestSummary(BaseModel):
@@ -45,6 +55,7 @@ class ScheduledTestSummary(BaseModel):
     title: str
     subject: Optional[str] = None
     chapter: Optional[str] = None
+    test_mode: str = "mcq"
     scheduled_at: str
     duration_minutes: Optional[int] = None
     status: str
