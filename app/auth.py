@@ -87,6 +87,8 @@ def get_current_user(
         "parent_id"
     )
 
+    name = metadata.get("name") or metadata.get("full_name")
+
     # -----------------------------------------------------
     # Debug
     # -----------------------------------------------------
@@ -114,8 +116,11 @@ def get_current_user(
         "sub": user.id,
         "email": user.email,
 
-        # Parent / Student role
+        # "parent" | "student" | "admin"
         "role": role,
+
+        # Admin display name
+        "name": name,
 
         # Student-specific identity
         "student_login_id": student_login_id,
@@ -123,3 +128,12 @@ def get_current_user(
         # Parent-specific identity
         "parent_id": parent_id,
     }
+
+
+def require_admin(current_user: dict) -> None:
+    """Raise 403 unless the caller is an admin."""
+    if current_user.get("role") != "admin":
+        raise HTTPException(
+            status_code=403,
+            detail="Admin access required",
+        )
