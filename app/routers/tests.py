@@ -22,6 +22,8 @@ from app.auth import get_current_user
 from app.directory_db import get_directory_db
 from app.directory_models import StudentProfile
 from app.feature_models import ScheduledTest
+from app.notification_models import Notification
+from app.routers.notifications import generate_due_notifications
 from app.feature_schemas import (
     ScheduledTestCreate,
     ScheduledTestSummary,
@@ -132,6 +134,7 @@ def _summary(test: ScheduledTest) -> ScheduledTestSummary:
         title=test.title,
         subject=test.subject,
         chapter=test.chapter,
+        test_mode=test.test_mode,
         scheduled_at=test.scheduled_at,
         duration_minutes=test.duration_minutes,
         status=test.status,
@@ -145,7 +148,7 @@ def _summary(test: ScheduledTest) -> ScheduledTestSummary:
 
 
 # =========================================================
-# CREATE (parent)
+# CREATE (parent) — handles both "mcq" and "printed" tests
 # =========================================================
 
 @router.post("", response_model=ScheduledTestSummary)
@@ -164,37 +167,76 @@ def create_test(
 
     _parent_child(current_user["sub"], payload.student_id, directory_db)
 
-    # Normalise every answer_index into range so grading can't break later.
-    clean_questions = []
-    for q in payload.questions:
-        idx = q.answer_index
-        if idx < 0 or idx >= len(q.options):
-            idx = 0
-        clean_questions.append(
-            {
-                "question": q.question,
-                "options": list(q.options),
-                "answer_index": idx,
-                "explanation": q.explanation or "",
-            }
+    test_mode = payload.test_mode or "mcq"
+
+    if test_mode == "printed":
+        if not payload.paper_text:
+            raise HTTPException(status_code=422, detail="paper_text is required for a printed test.")
+
+        test = ScheduledTest(
+            student_id=payload.student_id,
+            parent_id=current_user["sub"],
+            title=payload.title.strip() or "Test",
+            subject=payload.subject,
+            chapter=payload.chapter,
+            test_mode="printed",
+            questions_json=json.dumps([]),  # keeps the existing NOT NULL column happy
+            paper_text=payload.paper_text,
+            answer_key_text=payload.answer_key_text,
+            total_questions=0,
+            scheduled_at=payload.scheduled_at,
+            duration_minutes=payload.duration_minutes,
+            status="scheduled",
         )
 
-    test = ScheduledTest(
-        student_id=payload.student_id,
-        parent_id=current_user["sub"],
-        title=payload.title.strip() or "Test",
-        subject=payload.subject,
-        chapter=payload.chapter,
-        questions_json=json.dumps(clean_questions),
-        total_questions=len(clean_questions),
-        scheduled_at=payload.scheduled_at,
-        duration_minutes=payload.duration_minutes,
-        status="scheduled",
-    )
+    else:
+        if not payload.questions:
+            raise HTTPException(status_code=422, detail="questions is required for an MCQ test.")
+
+        # Normalise every answer_index into range so grading can't break later.
+        clean_questions = []
+        for q in payload.questions:
+            idx = q.answer_index
+            if idx < 0 or idx >= len(q.options):
+                idx = 0
+            clean_questions.append(
+                {
+                    "question": q.question,
+                    "options": list(q.options),
+                    "answer_index": idx,
+                    "explanation": q.explanation or "",
+                }
+            )
+
+        test = ScheduledTest(
+            student_id=payload.student_id,
+            parent_id=current_user["sub"],
+            title=payload.title.strip() or "Test",
+            subject=payload.subject,
+            chapter=payload.chapter,
+            test_mode="mcq",
+            questions_json=json.dumps(clean_questions),
+            total_questions=len(clean_questions),
+            scheduled_at=payload.scheduled_at,
+            duration_minutes=payload.duration_minutes,
+            status="scheduled",
+        )
 
     db.add(test)
     db.commit()
     db.refresh(test)
+
+    # Immediate notification — this one doesn't wait for a poll to notice
+    # anything is "due", since scheduling itself is the event.
+    kind_label = "printed test" if test_mode == "printed" else "test"
+    db.add(Notification(
+        student_id=test.student_id,
+        type="test_scheduled",
+        title=f"New {kind_label} scheduled: {test.title}",
+        message=f"Your parent has scheduled a {kind_label} for you, starting at {test.scheduled_at}.",
+        related_test_id=test.id,
+    ))
+    db.commit()
 
     return _summary(test)
 
@@ -217,6 +259,7 @@ def list_child_tests(
             raise HTTPException(status_code=403, detail="You do not have access to this student")
     else:
         _parent_child(current_user["sub"], student_id, directory_db)
+        generate_due_notifications(db, parent_id=current_user["sub"])
 
     tests = (
         db.query(ScheduledTest)
@@ -245,6 +288,8 @@ def list_my_tests(
             status_code=403,
             detail="Only a student can view their own tests.",
         )
+
+    generate_due_notifications(db, student_id=student.id)
 
     tests = (
         db.query(ScheduledTest)
@@ -286,6 +331,13 @@ def take_test(
         raise HTTPException(
             status_code=403,
             detail="This test isn't available yet — it unlocks at its scheduled time.",
+        )
+
+    if test.test_mode == "printed":
+        raise HTTPException(
+            status_code=400,
+            detail="This is a printed test — download/view the paper from My Tests and "
+                   "upload your completed answers via Homework Validation instead of taking it here.",
         )
 
     questions = json.loads(test.questions_json)
@@ -382,6 +434,55 @@ def submit_test(
         total_questions=len(questions),
         results=results,
     )
+
+
+# =========================================================
+# GET THE PRINTED PAPER (parent or student)
+# =========================================================
+# Students get the question paper only. Parents get the answer key too,
+# same as they already saw when they generated it.
+
+@router.get("/{test_id}/paper")
+def get_printed_paper(
+    test_id: str,
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    directory_db: Session = Depends(get_directory_db),
+):
+    test = db.query(ScheduledTest).filter(ScheduledTest.id == test_id).first()
+
+    if not test:
+        raise HTTPException(status_code=404, detail="Test not found")
+
+    if test.test_mode != "printed":
+        raise HTTPException(status_code=400, detail="This test is not a printed test.")
+
+    student = _logged_in_student(current_user, directory_db)
+
+    if student is not None:
+        if student.id != test.student_id:
+            raise HTTPException(status_code=403, detail="You do not have access to this test")
+        return {
+            "id": test.id,
+            "title": test.title,
+            "subject": test.subject,
+            "chapter": test.chapter,
+            "scheduled_at": test.scheduled_at,
+            "duration_minutes": test.duration_minutes,
+            "paper_text": test.paper_text,
+        }
+
+    _parent_child(current_user["sub"], test.student_id, directory_db)
+    return {
+        "id": test.id,
+        "title": test.title,
+        "subject": test.subject,
+        "chapter": test.chapter,
+        "scheduled_at": test.scheduled_at,
+        "duration_minutes": test.duration_minutes,
+        "paper_text": test.paper_text,
+        "answer_key_text": test.answer_key_text,
+    }
 
 
 # =========================================================
